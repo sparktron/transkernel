@@ -1,0 +1,6 @@
+version=7.0.14
+url=https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.14.tar.xz
+signature_url=https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.14.tar.sign
+sha256=de9999b784d2293f00d39c62d8f92a08ab8a54bc4e80ffd250a0c09cb07a0f98
+localversion=-jammy-modern
+

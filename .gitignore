@@ -1,0 +1,7 @@
+/artifacts/
+/build/
+/dist/
+*.deb
+*.changes
+*.buildinfo
+

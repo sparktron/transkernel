@@ -1,0 +1,20 @@
+subsystem	test	stock-ubuntu	linux-7.0.14-modern	evidence/notes
+boot	cold boot and GRUB fallback	not-tested	not-tested	
+cpu	cores, cpufreq, idle, sustained load	not-tested	not-tested	
+intel-gpu	DRM probe and internal display	not-tested	not-tested	
+intel-gpu	OpenGL/Vulkan/VA-API	not-tested	not-tested	
+nvidia	nvidia-smi, DKMS, CUDA, Vulkan, OpenGL	not-tested	not-tested	
+hybrid-graphics	PRIME, power-down, mux modes	not-tested	not-tested	
+external-display	USB-C DP, HDMI, dock, hotplug	not-tested	not-tested	
+storage	NVMe SMART and bounded I/O	not-tested	not-tested	
+network	Wi-Fi, Ethernet, USB Ethernet	not-tested	not-tested	
+bluetooth	pair, reconnect, audio/input device	not-tested	not-tested	
+audio	speakers, microphone, headset	not-tested	not-tested	
+camera	capture and suspend recovery	not-tested	not-tested	
+input	keyboard, hotkeys, touchpad, lighting	not-tested	not-tested	
+platform	battery, charge threshold, hwmon, profiles	not-tested	not-tested	
+ports	USB-A, USB-C, USB4/Thunderbolt	not-tested	not-tested	
+power	five suspend cycles on AC and battery	not-tested	not-tested	
+power	five cycles with NVIDIA active and idle	not-tested	not-tested	
+security	Secure Boot kernel and DKMS trust	not-tested	not-tested	
+

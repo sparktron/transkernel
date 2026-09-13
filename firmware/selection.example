@@ -1,0 +1,7 @@
+# Copy to selection.host and list exact paths proven necessary by audit logs.
+# Entries are relative to the pinned linux-firmware repository. No globs.
+# Examples only (do not uncomment without matching hardware evidence):
+# intel/xe/ptl_guc_70.bin
+# intel/ibt/ibt-*.sfi                 # invalid: globs are intentionally rejected
+# iwlwifi-ty-a0-gf-a0-*.ucode        # invalid: use the exact requested filename
+
