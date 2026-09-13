@@ -75,7 +75,7 @@ case "${action}" in
         [[ -d ${source_dir}/.git ]] || die "run '$0 fetch' first or provide --source"
         actual="$(git -C "${source_dir}" rev-parse HEAD)"
         [[ ${actual} == "${FW_COMMIT}" ]] || die "source must be pinned commit ${FW_COMMIT}; found ${actual}"
-        git -C "${source_dir}" diff --quiet --ignore-submodules -- || die "firmware source has local modifications"
+        git_worktree_is_clean "${source_dir}" || die "firmware source has staged, unstaged, or untracked modifications"
         have dpkg-deb || die "dpkg-deb is required"
         stage="$(mktemp -d)"
         trap 'rm -rf -- "${stage}"' EXIT

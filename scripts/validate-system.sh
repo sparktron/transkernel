@@ -107,9 +107,13 @@ if ${active}; then
     if have fio; then
         free_kib="$(df --output=avail -k "${scratch}" | tail -n1 | tr -d ' ')"
         (( free_kib >= 3145728 )) || die "scratch directory needs at least 3 GiB free"
+        fio_file="$(mktemp --tmpdir="${scratch}" jammy-modern-fio.XXXXXX)"
+        trap 'rm -f -- "${fio_file}"' EXIT
         capture storage-active fio --name=jammy-modern-validation \
-            --filename="${scratch%/}/jammy-modern-fio.test" --size=1G --rw=readwrite \
+            --filename="${fio_file}" --size=1G --rw=readwrite \
             --bs=1M --direct=1 --iodepth=4 --fsync_on_close=1 --unlink=1
+        rm -f -- "${fio_file}"
+        trap - EXIT
     else
         printf 'storage-active\tnot-tested\tfio unavailable\n' >>"${summary}"
     fi

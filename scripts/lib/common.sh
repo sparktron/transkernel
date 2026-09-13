@@ -17,6 +17,12 @@ have() {
     command -v "$1" >/dev/null 2>&1
 }
 
+git_worktree_is_clean() {
+    local status
+    status="$(git -C "$1" status --porcelain --untracked-files=all --ignore-submodules=none)" || return 1
+    [[ -z ${status} ]]
+}
+
 require_root() {
     [[ ${EUID} -eq 0 ]] || die "this operation requires root"
 }
@@ -32,7 +38,8 @@ require_jammy() {
 }
 
 check_ubuntu_sources_are_jammy() {
-    local file line suite ubuntu_deb822
+    local apt_root=${APT_SOURCES_ROOT:-/etc/apt}
+    local file line suite ubuntu_deb822 legacy source_uri
     while IFS= read -r -d '' file; do
         ubuntu_deb822=false
         if [[ ${file} == *.sources ]] &&
@@ -43,10 +50,22 @@ check_ubuntu_sources_are_jammy() {
             [[ ${line} =~ ^[[:space:]]*# ]] && continue
             if [[ ${line} =~ ^[[:space:]]*deb(-src)?[[:space:]] ]] &&
                [[ ${line} =~ (archive\.ubuntu\.com|security\.ubuntu\.com|ports\.ubuntu\.com|ppa\.launchpadcontent\.net) ]]; then
-                for suite in focal noble oracular plucky questing resolute; do
-                    [[ ${line} =~ (^|[[:space:]/])${suite}($|[-/[:space:]]) ]] &&
-                        die "non-Jammy Ubuntu suite '${suite}' is active in ${file}"
-                done
+                legacy="${line#"${line%%[![:space:]]*}"}"
+                legacy="${legacy#deb-src}"
+                legacy="${legacy#deb}"
+                legacy="${legacy#"${legacy%%[![:space:]]*}"}"
+                if [[ ${legacy} == \[* ]]; then
+                    [[ ${legacy} =~ ^\[[^]]*\][[:space:]]+(.*)$ ]] ||
+                        die "malformed Ubuntu source in ${file}"
+                    legacy=${BASH_REMATCH[1]}
+                fi
+                read -r source_uri suite _ <<<"${legacy}"
+                [[ ${source_uri} =~ (archive\.ubuntu\.com|security\.ubuntu\.com|ports\.ubuntu\.com|ppa\.launchpadcontent\.net) ]] ||
+                    continue
+                [[ -n ${suite} ]] ||
+                    die "malformed Ubuntu source in ${file}"
+                [[ ${suite} == jammy || ${suite} == jammy-* ]] ||
+                    die "non-Jammy Ubuntu suite '${suite:-unknown}' is active in ${file}"
             elif [[ ${ubuntu_deb822} == true ]] &&
                  [[ ${line} =~ ^[[:space:]]*Suites:[[:space:]]*(.*)$ ]]; then
                 for suite in ${BASH_REMATCH[1]}; do
@@ -55,7 +74,7 @@ check_ubuntu_sources_are_jammy() {
                 done
             fi
         done <"${file}"
-    done < <(find /etc/apt/sources.list /etc/apt/sources.list.d -maxdepth 1 -type f \
+    done < <(find "${apt_root}/sources.list" "${apt_root}/sources.list.d" -maxdepth 1 -type f \
         \( -name '*.list' -o -name '*.sources' -o -name 'sources.list' \) -print0 2>/dev/null)
 }
 
@@ -69,7 +88,23 @@ confirm_apply() {
 }
 
 secure_boot_enabled() {
-    have mokutil && mokutil --sb-state 2>/dev/null | grep -qi 'SecureBoot enabled'
+    local state
+    if ! have mokutil; then
+        log "WARNING: mokutil is unavailable; treating Secure Boot state as enabled"
+        return 0
+    fi
+    if ! state="$(mokutil --sb-state 2>/dev/null)"; then
+        log "WARNING: Secure Boot state could not be read; treating it as enabled"
+        return 0
+    fi
+    case ${state,,} in
+        *'secureboot enabled'*) return 0 ;;
+        *'secureboot disabled'*) return 1 ;;
+        *)
+            log "WARNING: Secure Boot state was not recognized; treating it as enabled"
+            return 0
+            ;;
+    esac
 }
 
 stock_kernel_packages() {

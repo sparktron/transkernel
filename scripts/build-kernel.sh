@@ -106,6 +106,6 @@ make -C "${source_dir}" O="${build_root}/obj" -j"${jobs}" bindeb-pkg \
 find "${build_root}" -maxdepth 2 -type f \
     \( -name '*.deb' -o -name '*.changes' -o -name '*.buildinfo' \) \
     ! -path "${build_root}/packages/*" \
-    -exec cp -n {} "${build_root}/packages/" \;
+    -exec cp -f {} "${build_root}/packages/" \;
 (cd "${build_root}/packages" && sha256sum ./*.deb >SHA256SUMS)
 log "packages and manifest: ${build_root}/packages"
