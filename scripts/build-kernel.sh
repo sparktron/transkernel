@@ -92,7 +92,7 @@ if ! ${prepare_only}; then
     x509_subject_key_id "${signing_cert}" >/dev/null
 fi
 
-mkdir -p "${build_root}/downloads" "${build_root}/source" "${build_root}/obj" "${build_root}/packages"
+mkdir -p "${build_root}/downloads" "${build_root}/source" "${build_root}/packages"
 tarball="${build_root}/downloads/linux-${KERNEL_VERSION}.tar.xz"
 signature="${build_root}/downloads/linux-${KERNEL_VERSION}.tar.sign"
 source_dir="${build_root}/source/linux-${KERNEL_VERSION}"
@@ -124,6 +124,11 @@ rm -rf -- "${source_dir}"
 mv -- "${fresh_source}" "${source_dir}"
 rm -rf -- "${extract_root}"
 trap - EXIT
+
+# The source archive is authoritative only if no objects from an earlier build
+# can be reused against it. Recreate O= from scratch on every invocation.
+rm -rf -- "${build_root}/obj"
+mkdir -- "${build_root}/obj"
 
 cp "${base_config}" "${build_root}/obj/.config"
 "${source_dir}/scripts/kconfig/merge_config.sh" -m -O "${build_root}/obj" \

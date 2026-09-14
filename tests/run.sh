@@ -153,9 +153,19 @@ if grep -Fq "if [[ ! -f \${source_dir}/Makefile ]]" "${ROOT}/scripts/build-kerne
     printf 'FAIL: kernel source is not freshly extracted for every build\n' >&2
     failures=$((failures + 1))
 fi
+if ! grep -Fq "rm -rf -- \"\${build_root}/obj\"" "${ROOT}/scripts/build-kernel.sh" ||
+   ! grep -Fq "mkdir -- \"\${build_root}/obj\"" "${ROOT}/scripts/build-kernel.sh"; then
+    printf 'FAIL: kernel object tree is not recreated for every build\n' >&2
+    failures=$((failures + 1))
+fi
 if ! grep -Fq -- '--manifest-sha256' "${ROOT}/scripts/install-kernel.sh" ||
    ! grep -Fq 'sha256sum --check --strict --status SHA256SUMS' "${ROOT}/scripts/install-kernel.sh"; then
     printf 'FAIL: kernel package manifest is not bound and verified\n' >&2
+    failures=$((failures + 1))
+fi
+if ! grep -Fq -- '--from build/kernel-7.0.14/packages' "${ROOT}/README.md" ||
+   ! grep -Fq -- '--manifest-sha256 DIGEST' "${ROOT}/README.md"; then
+    printf 'FAIL: documented kernel install command omits the package path or trusted manifest digest\n' >&2
     failures=$((failures + 1))
 fi
 if ! grep -Fq 'MICROCODE_STATE_FILE=' "${ROOT}/scripts/install-microcode.sh" ||
