@@ -15,14 +15,16 @@ explicit project constraint, not a claim that it receives ongoing upstream fixes
 - Audit and validation are read-only by default and write reports only below
   `artifacts/`.
 - Scripts that change the host require `--apply`; otherwise they print a plan.
-- All mutating scripts require Jammy and reject globally configured non-Jammy
-  Ubuntu archives.
+- All mutating scripts require Jammy and fail closed unless every enabled binary
+  APT source uses an approved Ubuntu host and a Jammy suite. Deb822 continuation
+  fields are parsed and validated.
 - The running kernel is never removed. Kernel installation requires a stock
   Ubuntu kernel to remain installed.
 - Firmware is installed as a versioned overlay package under
   `/lib/firmware/updates`, using an explicit file selection.
-- Secure Boot installations fail closed unless the custom kernel image is already
-  signed with a trusted key.
+- Full kernel builds require an explicit signing key and certificate. Secure Boot
+  installations verify every image against that certificate and prove that its
+  DER form is enrolled as a Machine Owner Key.
 
 ## Workflow
 
@@ -30,12 +32,15 @@ explicit project constraint, not a claim that it receives ongoing upstream fixes
 ./scripts/audit-host.sh
 ./scripts/install-build-deps.sh              # plan
 sudo ./scripts/install-build-deps.sh --apply
-./scripts/build-kernel.sh
-sudo ./scripts/install-kernel.sh --from build/packages --apply
+./scripts/build-kernel.sh --signing-key /secure/MOK.key --signing-cert /secure/MOK.pem
+# Copy the trusted manifest SHA-256 printed by the build command.
+sudo ./scripts/install-kernel.sh --from build/kernel-7.0.14/packages \
+  --manifest-sha256 DIGEST --trusted-cert /secure/MOK.der --apply
 sudo ./scripts/install-microcode.sh --apply
 # Reboot, then record the loaded revision:
 sudo ./scripts/install-microcode.sh verify --apply
-sudo ./scripts/install-nvidia.sh --apply
+sudo ./scripts/install-nvidia.sh --mok-cert /secure/MOK.der \
+  --kernel-release "$(uname -r)" --apply
 ./scripts/validate-system.sh
 ```
 

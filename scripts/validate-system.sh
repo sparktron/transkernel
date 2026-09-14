@@ -38,6 +38,7 @@ report="${output_root}/${release}-${timestamp}"
 mkdir -p "${report}"
 summary="${report}/SUMMARY.tsv"
 printf 'check\tstatus\tnote\n' >"${summary}"
+failed_checks=0
 
 capture() {
     local name=$1
@@ -55,6 +56,7 @@ capture() {
         printf '%s\tnot-tested\tcommand unavailable\n' "${name}" >>"${summary}"
     else
         printf '%s\tfails\texit %s; inspect %s.txt\n' "${name}" "${status}" "${name}" >>"${summary}"
+        failed_checks=$((failed_checks + 1))
     fi
     return 0
 }
@@ -127,3 +129,7 @@ asus-platform	not-tested	manual: profiles, fans, charge threshold, hotkeys, mux
 suspend-resume	not-tested	manual: five cycles per state from docs/test-plan.md
 EOF
 log "validation report: ${report}"
+if (( failed_checks > 0 )); then
+    log "validation failed: ${failed_checks} required check(s) failed"
+    exit 1
+fi

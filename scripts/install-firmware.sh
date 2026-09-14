@@ -136,13 +136,27 @@ EOF
         mkdir -p "${output_dir}"
         out="${output_dir}/jammy-modern-firmware_${FW_TAG}-1_all.deb"
         dpkg-deb --root-owner-group --build "${root}" "${out}"
-        sha256sum "${out}" >"${out}.sha256"
+        (cd "$(dirname "${out}")" && sha256sum "$(basename "${out}")") >"${out}.sha256"
         log "built ${out} with ${count} explicitly selected entries"
         ;;
     install)
         require_jammy
-        check_ubuntu_sources_are_jammy
+        check_ubuntu_sources_are_jammy --
         [[ -r ${package} ]] || die "--package must name a readable .deb"
+        checksum="${package}.sha256"
+        [[ -r ${checksum} ]] || die "firmware checksum is missing: ${checksum}"
+        have sha256sum || die "sha256sum is required to verify the firmware package"
+        IFS=' ' read -r expected_checksum checksum_name checksum_extra <"${checksum}" ||
+            die "firmware checksum is unreadable: ${checksum}"
+        checksum_name="${checksum_name#\*}"
+        [[ ${expected_checksum} =~ ^[[:xdigit:]]{64}$ && -n ${checksum_name} && -z ${checksum_extra} ]] ||
+            die "firmware checksum is malformed: ${checksum}"
+        [[ ${checksum_name##*/} == "${package##*/}" ]] ||
+            die "firmware checksum names a different package: ${checksum_name}"
+        actual_checksum="$(sha256sum "${package}")"
+        actual_checksum="${actual_checksum%% *}"
+        [[ ${actual_checksum} == "${expected_checksum,,}" ]] ||
+            die "firmware package checksum verification failed: ${package}"
         [[ $(dpkg-deb -f "${package}" Package) == jammy-modern-firmware ]] \
             || die "package is not jammy-modern-firmware"
         log "would install firmware overlay: ${package}"
