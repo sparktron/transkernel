@@ -89,6 +89,21 @@ if grep -Fq -- '-exec cp -n ' "${ROOT}/scripts/build-kernel.sh" ||
     printf 'FAIL: rebuilt kernel packages are not replaced\n' >&2
     failures=$((failures + 1))
 fi
+if grep -Fq "if [[ ! -f \${source_dir}/Makefile ]]" "${ROOT}/scripts/build-kernel.sh" ||
+   ! grep -Fq "extract_root=\"\$(mktemp -d --" "${ROOT}/scripts/build-kernel.sh"; then
+    printf 'FAIL: kernel source is not freshly extracted for every build\n' >&2
+    failures=$((failures + 1))
+fi
+if ! grep -Fq -- '--manifest-sha256' "${ROOT}/scripts/install-kernel.sh" ||
+   ! grep -Fq 'sha256sum --check --strict --status SHA256SUMS' "${ROOT}/scripts/install-kernel.sh"; then
+    printf 'FAIL: kernel package manifest is not bound and verified\n' >&2
+    failures=$((failures + 1))
+fi
+if ! grep -Fq 'MICROCODE_STATE_FILE=' "${ROOT}/scripts/install-microcode.sh" ||
+   ! grep -Fq -- '--expected-revision' "${ROOT}/scripts/install-microcode.sh"; then
+    printf 'FAIL: microcode verification lacks recorded or explicit revision checks\n' >&2
+    failures=$((failures + 1))
+fi
 
 (( failures == 0 )) || exit 1
 printf 'PASS: shell checks, help smoke tests, and Bugbot regressions\n'

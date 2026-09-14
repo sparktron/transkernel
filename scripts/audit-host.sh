@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/common.sh
 . "${SCRIPT_DIR}/lib/common.sh"
 
+umask 077
+
 usage() {
     cat <<'EOF'
 Usage: audit-host.sh [--output DIR]
@@ -26,8 +28,12 @@ done
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 host="$(hostname 2>/dev/null || printf unknown-host)"
-bundle="${output_root}/${host}-${timestamp}"
-mkdir -p "${bundle}"
+mkdir -p -- "${output_root}"
+[[ -d ${output_root} && ! -L ${output_root} ]] ||
+    die "audit output must be a real directory, not a symbolic link: ${output_root}"
+bundle="$(mktemp -d -- "${output_root}/${host}-${timestamp}.XXXXXX")"
+[[ -d ${bundle} && ! -L ${bundle} ]] || die "failed to create a safe audit directory"
+chmod 0700 "${bundle}"
 
 run() {
     local name=$1
@@ -130,4 +136,5 @@ run dmesg dmesg --ctime
 archive="${bundle}.tar.gz"
 tar -C "${output_root}" -czf "${archive}" "$(basename "${bundle}")"
 sha256sum "${archive}" >"${archive}.sha256"
+chmod 0600 "${archive}" "${archive}.sha256"
 log "audit complete: ${archive}"

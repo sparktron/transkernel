@@ -6,14 +6,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/lib/common.sh"
 
 usage() {
-    printf 'Usage: %s --from DIR [--apply]\n' "$0"
+    printf 'Usage: %s --from DIR --manifest-sha256 SHA256 [--apply]\n' "$0"
 }
 
 package_dir=""
+manifest_sha256=""
 apply=false
 while (($#)); do
     case "$1" in
         --from) [[ $# -ge 2 ]] || die "--from needs a directory"; package_dir=$2; shift 2 ;;
+        --manifest-sha256) [[ $# -ge 2 ]] || die "--manifest-sha256 needs a digest"; manifest_sha256=$2; shift 2 ;;
         --apply) apply=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) die "unknown argument: $1" ;;
@@ -23,9 +25,38 @@ done
 require_jammy
 check_ubuntu_sources_are_jammy
 [[ -d ${package_dir} ]] || die "package directory not found: ${package_dir:-<unset>}"
+[[ ${manifest_sha256} =~ ^[[:xdigit:]]{64}$ ]] ||
+    die "--manifest-sha256 must be the trusted 64-character digest printed by build-kernel.sh"
+manifest="${package_dir}/SHA256SUMS"
+[[ -f ${manifest} && ! -L ${manifest} ]] || die "trusted package manifest is missing or unsafe: ${manifest}"
+actual_manifest_sha256="$(sha256sum "${manifest}")"
+actual_manifest_sha256="${actual_manifest_sha256%% *}"
+[[ ${actual_manifest_sha256} == "${manifest_sha256,,}" ]] || die "kernel package manifest digest mismatch"
+
+declare -A manifested_debs=()
+while IFS=' ' read -r package_sha256 manifest_name manifest_extra; do
+    manifest_name="${manifest_name#\*}"
+    [[ ${package_sha256} =~ ^[[:xdigit:]]{64}$ && -n ${manifest_name} && -z ${manifest_extra} ]] ||
+        die "malformed kernel package manifest entry"
+    [[ ${manifest_name} != */* && ${manifest_name} == *.deb ]] ||
+        die "unsafe kernel package manifest path: ${manifest_name}"
+    [[ -z ${manifested_debs["${manifest_name}"]:-} ]] ||
+        die "duplicate kernel package manifest entry: ${manifest_name}"
+    [[ -f ${package_dir}/${manifest_name} && ! -L ${package_dir}/${manifest_name} ]] ||
+        die "manifested kernel package is missing or unsafe: ${manifest_name}"
+    manifested_debs["${manifest_name}"]="${package_sha256,,}"
+done <"${manifest}"
+(( ${#manifested_debs[@]} > 0 )) || die "kernel package manifest contains no packages"
+(cd "${package_dir}" && sha256sum --check --strict --status SHA256SUMS) ||
+    die "kernel package checksum verification failed"
+
 packages=()
 releases=()
+declare -A header_releases=()
 while IFS= read -r deb; do
+    deb_name="${deb##*/}"
+    [[ -n ${manifested_debs["${deb_name}"]:-} ]] ||
+        die "unmanifested kernel package found: ${deb_name}"
     package_name="$(dpkg-deb -f "${deb}" Package)"
     case "${package_name}" in
         linux-image-*-jammy-modern)
@@ -34,10 +65,15 @@ while IFS= read -r deb; do
             ;;
         linux-headers-*-jammy-modern)
             packages+=("${deb}")
+            header_releases["${package_name#linux-headers-}"]=1
             ;;
     esac
 done < <(find "${package_dir}" -maxdepth 1 -type f -name '*.deb' -print | sort)
-(( ${#packages[@]} > 0 )) || die "no jammy-modern image/header packages found in ${package_dir}"
+(( ${#releases[@]} > 0 )) || die "no jammy-modern image packages found in ${package_dir}"
+for release in "${releases[@]}"; do
+    [[ ${header_releases["${release}"]:-} == 1 ]] ||
+        die "matching headers package is missing for ${release}"
+done
 
 stock="$(stock_kernel_packages)"
 [[ -n ${stock} ]] || die "no stock linux-image-*-generic package is installed; rollback invariant failed"

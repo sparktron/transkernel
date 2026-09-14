@@ -69,9 +69,15 @@ else
     log "signature verification skipped: supply a trusted kernel.org maintainer keyring with --gpg-keyring"
 fi
 
-if [[ ! -f ${source_dir}/Makefile ]]; then
-    tar -C "${build_root}/source" -xf "${tarball}"
-fi
+extract_root="$(mktemp -d -- "${build_root}/source/.linux-${KERNEL_VERSION}.XXXXXX")"
+trap 'rm -rf -- "${extract_root}"' EXIT
+tar -C "${extract_root}" -xf "${tarball}"
+fresh_source="${extract_root}/linux-${KERNEL_VERSION}"
+[[ -f ${fresh_source}/Makefile ]] || die "verified kernel archive did not contain the expected source tree"
+rm -rf -- "${source_dir}"
+mv -- "${fresh_source}" "${source_dir}"
+rm -rf -- "${extract_root}"
+trap - EXIT
 
 cp "${base_config}" "${build_root}/obj/.config"
 "${source_dir}/scripts/kconfig/merge_config.sh" -m -O "${build_root}/obj" \
@@ -103,9 +109,19 @@ fi
 make -C "${source_dir}" O="${build_root}/obj" -j"${jobs}" bindeb-pkg \
     KDEB_PKGVERSION="${KERNEL_VERSION}-1jammy1" LOCALVERSION="${LOCALVERSION}"
 
+find "${build_root}/packages" -maxdepth 1 -type f \
+    \( -name '*.deb' -o -name '*.changes' -o -name '*.buildinfo' -o -name 'SHA256SUMS' \) \
+    -delete
 find "${build_root}" -maxdepth 2 -type f \
     \( -name '*.deb' -o -name '*.changes' -o -name '*.buildinfo' \) \
     ! -path "${build_root}/packages/*" \
     -exec cp -f {} "${build_root}/packages/" \;
-(cd "${build_root}/packages" && sha256sum ./*.deb >SHA256SUMS)
+mapfile -t built_debs < <(
+    find "${build_root}/packages" -maxdepth 1 -type f -name '*.deb' -printf '%f\n' | sort
+)
+(( ${#built_debs[@]} > 0 )) || die "kernel build produced no Debian packages"
+(cd "${build_root}/packages" && sha256sum -- "${built_debs[@]}" >SHA256SUMS)
+manifest_digest="$(sha256sum "${build_root}/packages/SHA256SUMS")"
+manifest_digest="${manifest_digest%% *}"
 log "packages and manifest: ${build_root}/packages"
+log "trusted manifest SHA-256 (pass with --manifest-sha256): ${manifest_digest}"
