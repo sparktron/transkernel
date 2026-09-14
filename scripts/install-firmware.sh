@@ -141,7 +141,7 @@ EOF
         ;;
     install)
         require_jammy
-        check_ubuntu_sources_are_jammy
+        check_ubuntu_sources_are_jammy --
         [[ -r ${package} ]] || die "--package must name a readable .deb"
         checksum="${package}.sha256"
         [[ -r ${checksum} ]] || die "firmware checksum is missing: ${checksum}"

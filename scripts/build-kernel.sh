@@ -13,18 +13,52 @@ readonly LOCALVERSION="-jammy-modern"
 usage() {
     cat <<EOF
 Usage: build-kernel.sh [--build-root DIR] [--config FILE] [--jobs N]
-                       [--gpg-keyring FILE] [--prepare-only]
+                       [--gpg-keyring FILE] [--signing-key FILE]
+                       [--signing-cert FILE] [--prepare-only]
 
 Builds pinned Linux ${KERNEL_VERSION} using upstream bindeb-pkg. The SHA-256 is
 always verified. If --gpg-keyring is supplied, the detached kernel.org signature
-over the uncompressed tar archive is also required to verify.
+over the uncompressed tar archive is also required to verify. Full builds require
+a PEM private key and matching X.509 certificate to sign every packaged image.
 EOF
+}
+
+sign_image_package() {
+    local package=$1 work_root=$2 sequence=$3
+    local package_root="${work_root}/package-${sequence}"
+    local rebuilt="${package}.signed"
+    local image signed_image
+    local images=()
+
+    dpkg-deb --raw-extract "${package}" "${package_root}"
+    mapfile -d '' -t images < <(
+        find "${package_root}/boot" -maxdepth 1 -type f -name 'vmlinuz-*' -print0
+    )
+    (( ${#images[@]} > 0 )) || die "kernel image package contains no bootable image: ${package}"
+    for image in "${images[@]}"; do
+        signed_image="${image}.signed"
+        sbsign --key "${signing_key}" --cert "${signing_cert}" \
+            --output "${signed_image}" "${image}"
+        sbverify --cert "${signing_cert}" "${signed_image}" >/dev/null
+        chmod --reference="${image}" "${signed_image}"
+        mv -- "${signed_image}" "${image}"
+    done
+    if [[ -f ${package_root}/DEBIAN/md5sums ]]; then
+        (cd "${package_root}" &&
+            find . -path ./DEBIAN -prune -o -type f -printf '%P\0' |
+            sort -z | xargs -0 md5sum) >"${package_root}/DEBIAN/md5sums"
+        chmod 0644 "${package_root}/DEBIAN/md5sums"
+    fi
+    dpkg-deb --root-owner-group --build "${package_root}" "${rebuilt}"
+    mv -- "${rebuilt}" "${package}"
 }
 
 build_root="${PROJECT_ROOT}/build/kernel-${KERNEL_VERSION}"
 base_config="/boot/config-$(uname -r)"
 jobs="$(nproc)"
 gpg_keyring=""
+signing_key=""
+signing_cert=""
 prepare_only=false
 while (($#)); do
     case "$1" in
@@ -32,6 +66,8 @@ while (($#)); do
         --config) [[ $# -ge 2 ]] || die "--config needs a file"; base_config=$2; shift 2 ;;
         --jobs) [[ $# -ge 2 ]] || die "--jobs needs a count"; jobs=$2; shift 2 ;;
         --gpg-keyring) [[ $# -ge 2 ]] || die "--gpg-keyring needs a file"; gpg_keyring=$2; shift 2 ;;
+        --signing-key) [[ $# -ge 2 ]] || die "--signing-key needs a file"; signing_key=$2; shift 2 ;;
+        --signing-cert) [[ $# -ge 2 ]] || die "--signing-cert needs a file"; signing_cert=$2; shift 2 ;;
         --prepare-only) prepare_only=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) die "unknown argument: $1" ;;
@@ -41,10 +77,20 @@ done
 require_jammy
 [[ -r ${base_config} ]] || die "baseline config is not readable: ${base_config}"
 [[ ${jobs} =~ ^[1-9][0-9]*$ ]] || die "--jobs must be a positive integer"
-for tool in awk bc bison curl dpkg-buildpackage fakeroot flex gcc make openssl \
+for tool in awk bc bison curl dpkg-buildpackage dpkg-deb fakeroot flex gcc make openssl \
     pkg-config rsync sha256sum tar xz; do
     have "${tool}" || die "missing build tool: ${tool}; run install-build-deps.sh"
 done
+if ! ${prepare_only}; then
+    [[ -r ${signing_key} ]] || die "full builds require a readable --signing-key"
+    [[ -r ${signing_cert} ]] || die "full builds require a readable PEM --signing-cert"
+    for tool in md5sum sbsign sbverify; do
+        have "${tool}" || die "missing signing tool: ${tool}; run install-build-deps.sh"
+    done
+    openssl x509 -in "${signing_cert}" -noout >/dev/null 2>&1 ||
+        die "--signing-cert must be a PEM X.509 certificate"
+    x509_subject_key_id "${signing_cert}" >/dev/null
+fi
 
 mkdir -p "${build_root}/downloads" "${build_root}/source" "${build_root}/obj" "${build_root}/packages"
 tarball="${build_root}/downloads/linux-${KERNEL_VERSION}.tar.xz"
@@ -113,13 +159,29 @@ find "${build_root}/packages" -maxdepth 1 -type f \
     \( -name '*.deb' -o -name '*.changes' -o -name '*.buildinfo' -o -name 'SHA256SUMS' \) \
     -delete
 find "${build_root}" -maxdepth 2 -type f \
-    \( -name '*.deb' -o -name '*.changes' -o -name '*.buildinfo' \) \
+    -name '*.deb' \
     ! -path "${build_root}/packages/*" \
     -exec cp -f {} "${build_root}/packages/" \;
 mapfile -t built_debs < <(
     find "${build_root}/packages" -maxdepth 1 -type f -name '*.deb' -printf '%f\n' | sort
 )
 (( ${#built_debs[@]} > 0 )) || die "kernel build produced no Debian packages"
+signing_root="$(mktemp -d -- "${build_root}/.package-signing.XXXXXX")"
+trap 'rm -rf -- "${signing_root}"' EXIT
+signed_images=0
+package_sequence=0
+for built_deb in "${built_debs[@]}"; do
+    package_path="${build_root}/packages/${built_deb}"
+    package_name="$(dpkg-deb -f "${package_path}" Package)"
+    if [[ ${package_name} == linux-image-*-jammy-modern ]]; then
+        package_sequence=$((package_sequence + 1))
+        sign_image_package "${package_path}" "${signing_root}" "${package_sequence}"
+        signed_images=$((signed_images + 1))
+    fi
+done
+(( signed_images > 0 )) || die "kernel build produced no image package to sign"
+rm -rf -- "${signing_root}"
+trap - EXIT
 (cd "${build_root}/packages" && sha256sum -- "${built_debs[@]}" >SHA256SUMS)
 manifest_digest="$(sha256sum "${build_root}/packages/SHA256SUMS")"
 manifest_digest="${manifest_digest%% *}"

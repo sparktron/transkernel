@@ -15,8 +15,10 @@ test run occurs on the target, all target-specific entries remain `not-tested`.
 - **NVIDIA packaging:** package names and supported GPUs depend on the enabled
   Jammy NVIDIA archive at install time. The install script checks the apt candidate
   and refuses downgrades; it does not assert that 580 supports an unidentified GPU.
-- **Secure Boot:** an upstream-built kernel is not Canonical-signed. Both the EFI
-  image and out-of-tree modules must chain to a key trusted by shim/firmware.
+- **Secure Boot:** an upstream-built kernel is not Canonical-signed. The build and
+  install scripts bind every EFI image to an explicitly enrolled certificate;
+  NVIDIA DKMS modules must expose that certificate's subject key ID and load
+  successfully on each target kernel.
 - **Suspend/external display topology:** mux routing and USB-C/HDMI wiring are
   model-specific and cannot be inferred from GPU presence.
 - **Camera/audio:** IPU and Sound Open Firmware often need exact firmware and
@@ -56,4 +58,3 @@ Test upstream `asus-wmi`, `asus-nb-wmi`, `asus-armoury`, `platform_profile`, hwm
 battery threshold, hotkey, fan, and mux interfaces first. Treat `asusctl` as an
 optional userspace convenience. Out-of-tree patches require the ACPI/WMI GUID or
 method, failing log, upstream status, and a documented reason 7.0.14 is inadequate.
-

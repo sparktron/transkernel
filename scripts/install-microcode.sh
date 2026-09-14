@@ -38,7 +38,7 @@ done
     die "--expected-revision must be a hexadecimal revision such as 0x123"
 
 require_jammy
-check_ubuntu_sources_are_jammy
+check_ubuntu_sources_are_jammy --
 vendor="$(lscpu 2>/dev/null | awk -F: '/Vendor ID/{gsub(/[[:space:]]/, "", $2); print $2}')"
 [[ ${vendor} == GenuineIntel ]] || die "Intel CPU required; found ${vendor:-unknown}"
 

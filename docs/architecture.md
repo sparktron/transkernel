@@ -29,8 +29,9 @@ UEFI/ACPI hardware
    platform name.
 3. Build the pinned kernel from the running Ubuntu config plus the small reviewed
    fragment in `kernel/config/modern-hwe.config`.
-4. Inspect the config delta and Debian package contents. Boot with Secure Boot
-   disabled first, while retaining a stock kernel GRUB entry.
+4. Inspect the config delta and signed Debian package contents. Retain a stock
+   kernel GRUB entry; an initial boot with Secure Boot disabled remains a valid
+   diagnostic step, but it does not replace enrolled-certificate verification.
 5. Validate kernel-only behavior with stock Jammy firmware and graphics userspace.
 6. Add only the firmware blobs shown missing or too old by kernel logs, packaging
    them as a versioned overlay.
@@ -58,4 +59,3 @@ production system needs an explicit security-maintenance decision: rebuild with
 backported fixes, or obtain approval to move to a maintained upstream series while
 preserving this architecture. The scripts deliberately do not silently change the
 requested kernel major/minor.
-

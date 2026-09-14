@@ -14,7 +14,7 @@ fi
 [[ $# -le 1 ]] || die "usage: $0 [--apply]"
 
 require_jammy
-check_ubuntu_sources_are_jammy
+check_ubuntu_sources_are_jammy --
 
 packages=(
     bc binutils bison build-essential cpio curl debhelper dwarves fakeroot flex
